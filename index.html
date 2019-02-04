@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <meta name="description" content="Canvas Flowmap Layer with LeafletJS." />
+
+  <title>Canvas Flowmap Layer with LeafletJS</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.3/dist/leaflet.css" />
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+    }
+
+    #map {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      right: 0;
+      left: 0;
+    }
+
+    #park-selector {
+        position: absolute;
+        right: 10px;
+        top: 10px;
+        z-index: 999;
+    }
+  </style>
+
+</head>
+
+<body>
+  
+  <select name="park-selector" id="park-selector" onchange="selectPark(this.value)">
+
+  </select>
+  <div id="map"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@5.8.0/dist/d3.min.js"></script>
+
+  <!-- first load LeafletJS -->
+  <script src="https://unpkg.com/leaflet@1.3/dist/leaflet.js"></script>
+
+  <!-- load Esri Leaflet because we want to use an Esri basemap -->
+  <script src="https://unpkg.com/esri-leaflet@2.1/dist/esri-leaflet.js"></script>
+
+  <!-- load animation tweening lib requirement for CanvasFlowMapLayer -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/17.2.0/Tween.min.js"></script>
+
+  <!-- then load CanvasFlowMapLayer -->
+  <script src="https://cdn.jsdelivr.net/gh/jwasilgeo/Leaflet.Canvas-Flowmap-Layer@master/src/CanvasFlowmapLayer.js"></script>
+
+  <!-- also load 3rd-party CSV parsing libary just for this demo  -->
+  <script src="https://unpkg.com/papaparse@4.3/papaparse.min.js"></script>
+  
+  <script>
+      var oneToManyFlowmapLayer;
+    var map = L.map('map');
+
+    map.setView([35.779591, -78.638176], 14);
+    map.createPane('parks')
+    map.getPane('parks').style.zIndex = 201
+   
+
+    L.esri.basemapLayer('DarkGray').addTo(map);
+
+    var canvasRenderer = L.canvas();
+
+    Promise.all([
+        d3.json('ebpa_los_parks_combined.geojson')
+    ]).then(([parksData]) => {
+
+    var parksLayer = L.geoJson(parksData, {
+        onEachFeature: parksOnEachFeature,
+        style: {
+            fillColor: '#B71C1C',
+            fillOpacity: 0.25,
+            weight: 0
+        }
+    })
+    parksLayer.addTo(map)
+
+    Papa.parse('ebpa_all_los_origin_dest.csv', {
+      download: true,
+      header: true,
+      dynamicTyping: true,
+      skipEmptyLines: true,
+      complete: function(results) {
+
+        // Get an array of park names in alphabetical order
+        var parksArray = results.data.map(function(datum) {
+        return datum.destination_id
+        })
+        uniqueParksArray = Array.from(new Set(parksArray)).sort()
+        var select = document.getElementById('park-selector')
+        for (var i = 0; i < uniqueParksArray.length; i++) {
+            var option = document.createElement("OPTION");
+            var txt = document.createTextNode(uniqueParksArray[i]);
+            option.appendChild(txt);
+            option.setAttribute("value", uniqueParksArray[i]);
+            select.insertBefore(option, select.lastChild); 
+        }
+
+        var geoJsonFeatureCollection = {
+          type: 'FeatureCollection',
+          features: results.data.map(function(datum) {
+            return {
+              type: 'Feature',
+              geometry: {
+                type: 'Point',
+                coordinates: [datum.origin_x, datum.origin_y]
+              },
+              properties: datum
+            }
+          })
+        };
+
+        oneToManyFlowmapLayer = L.canvasFlowmapLayer(geoJsonFeatureCollection, {
+          originAndDestinationFieldIds: {
+            destinationUniqueIdField: 'origin_id',
+            destinationGeometry: {
+              x: 'origin_x',
+              y: 'origin_y'
+            },
+            originUniqueIdField: 'destination_id',
+            originGeometry: {
+              x: 'destination_x',
+              y: 'destination_y'
+            }
+          },
+          pathDisplayMode: 'selection',
+          animationStarted: false,
+          animationEasingFamily: 'Cubic',
+          animationEasingType: 'In',
+          animationDuration: 2000,
+          canvasBezierStyle: {
+            type: 'uniqueValue',
+            field: 'analysis_class',
+            uniqueValueInfos: [{
+                value: "Half",
+                symbol: {
+                    strokeStyle: "#4CAF50",
+                    lineWidth: 1.5,
+                    lineCap: 'round',
+                    shadowColor: 'black',
+                    shadowBlur: 1.5
+                }
+            },{
+                value: 1,
+                symbol: {
+                    strokeStyle: "#FFC107",
+                    lineWidth: 0.75,
+                    lineCap: 'round',
+                    shadowColor: 'black',
+                    shadowBlur: 0.75
+                }
+            },{
+                value: 2,
+                symbol: {
+                    strokeStyle: "#FF1744",
+                    lineWidth: 0.5,
+                    lineCap: 'round',
+                    shadowColor: 'black',
+                    shadowBlur: 0.5
+                }
+            },{
+                value: 4,
+                symbol: {
+                    strokeStyle: "#FFEBEE",
+                    lineWidth: 0.125,
+                    lineCap: 'round'
+                }
+            }]
+          },
+        //   animatedCanvasBezierStyle: {
+        //     type: 'simple',
+        //     symbol: {
+        //     strokeStyle: '#18FFFF',
+        //     lineWidth: 1,
+        //     lineDashOffsetSize: 4, // custom property used with animation sprite sizes
+        //     lineCap: 'round'
+        //     }
+        //   },
+          style: function(geoJsonFeature) {
+            // use leaflet's path styling options
+
+            // since the GeoJSON feature properties are modified by the layer,
+            // developers can rely on the "isOrigin" property to set different
+            // symbols for origin vs destination CircleMarker stylings
+
+            if (geoJsonFeature.properties.isOrigin) {
+                return {
+                renderer: canvasRenderer,
+                radius: 0.1,
+                weight: 0,
+                fillColor: '#64FFDA',
+                fillOpacity: 0
+                }
+            } else {
+                return {
+                renderer: canvasRenderer, // recommended to use your own L.canvas()
+                radius: 0.5,
+                weight: 2,
+                opacity: 0,
+                fillColor: '#FF4081',
+                fillOpacity: 1
+                };
+            }
+        }
+        }).addTo(map);
+
+        // since this demo is using the optional "pathDisplayMode" as "selection",
+        // it is up to the developer to wire up a click or mouseover listener
+        // and then call the "selectFeaturesForPathDisplay()" method to inform the layer
+        // which Bezier paths need to be drawn
+        oneToManyFlowmapLayer.on('click', function(e) {
+          if (e.sharedOriginFeatures.length) {
+            oneToManyFlowmapLayer.selectFeaturesForPathDisplay(e.sharedOriginFeatures, 'SELECTION_NEW');
+          }
+          if (e.sharedDestinationFeatures.length) {
+            oneToManyFlowmapLayer.selectFeaturesForPathDisplay(e.sharedDestinationFeatures, 'SELECTION_NEW');
+          }
+        });
+
+        // immediately select an origin point for Bezier path display,
+        // instead of waiting for the first user click event to fire
+        oneToManyFlowmapLayer.selectFeaturesForPathDisplayById('destination_id', 'Nash Square', true, 'SELECTION_NEW');
+      }
+    });
+})
+    function selectPark(val) {
+            oneToManyFlowmapLayer.selectFeaturesForPathDisplayById('destination_id', val, true, 'SELECTION_NEW');
+
+        }
+    
+    function parksOnEachFeature(feature, layer) {
+        layer.on({
+            click: function(e) {
+                oneToManyFlowmapLayer.selectFeaturesForPathDisplayById('destination_id', e.target.feature.properties.name, true, 'SELECTION_NEW');
+                console.log(e.target.feature.properties.name)
+            }
+        })
+    }
+    
+
+  </script>
+
+</body>
+
+</html>
