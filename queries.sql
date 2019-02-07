@@ -13,7 +13,9 @@ los_parks as (
 	FROM ebpa.raleigh_county_state_parks as sc																					   
 )
 
-SELECT r.geoid as origin_id, cb_x as origin_x, cb_y as origin_y, p.parkid, r.park as destination_id, p_x as destination_x, p_y as destination_y, analysis_class
+SELECT r.geoid as origin_id, cb_x as origin_x, cb_y as origin_y,
+	   p.parkid, r.park as destination_id, p_x as destination_x, p_y as destination_y,
+	   analysis_class, total_length
 FROM scratch.ebpa_routes_all as r
 JOIN los_parks as p
 ON r.park = p.name
