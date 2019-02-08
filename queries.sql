@@ -40,3 +40,26 @@ UNION ALL
 SELECT name, park, geoid, total_length, '2' as analysis_class, geom FROM scratch.ebpa_routes_2mi
 UNION ALL
 SELECT name, park, geoid, total_length, '4' as analysis_class, geom FROM scratch.ebpa_routes_4mi
+
+-- Create an ebpa dataset with scores and 2018 population density calculated
+select los.geoid10,
+	   los.los_dist_score,
+	   los.los_acre_score,
+	   los.los_exp_score,
+	   los.los_total_score,
+	   los.la_dist_score,
+	   los.la_acre_score,
+	   los.la_exp_score,
+	   los.la_total_score,
+	   los.gw_score_loop_contiguous,
+	   los.los_gw_total_score,
+	   los.la_gw_total_score,
+	   pop.totpop,
+	   st_area(cb.geom) / 27878400 as area,
+	   pop.totpop/(st_area(cb.geom) / 27878400) as popdensity_sqmi,
+	   st_transform(cb.geom, 4326) as geom
+from ebpa.combined_statecounty_gw_analysis los
+join demographics.population pop
+on los.geoid10 = pop.geoid10
+join ebpa.raleigh_plus_censusblocks_no_attr_2010 cb
+on los.geoid10 = cb.geoid10
